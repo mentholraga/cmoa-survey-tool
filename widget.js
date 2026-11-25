@@ -101,6 +101,7 @@
     var ANS = {}, DONE_STAGES = [], DONE_SCREENS = [];
     var STAGE = 1, SCREENS = [], SI = 0, startedAt = Date.now();
     var GUESS = { placed: false, moved: false };
+    var SCREEN_T = Date.now(), REVEAL_T = Date.now();   // for the timings in the sheet mirror
 
     var stageDef = function (n) { return (DEF.stages || []).filter(function (s) { return s.n === n; })[0] || {}; };
     var moduleDef = function () { return (DEF.modules || {})[MODULE] || DEF.modules.full; };
@@ -320,6 +321,7 @@
         (veryFirst ? '<p class="consent">' + DEF.consent_text + '</p>' : '<p class="consent">Saved as you go. Come back in this browser any time.</p>'));
       wire();
       logEvent('screen_view', { p_screen: scr });
+      SCREEN_T = Date.now();
       toTop();
     }
 
@@ -461,6 +463,7 @@
       var scr = SCREENS[SI], qs = visible(scr);
       if (!validate(qs)) return;
       var btn = $('#next');
+      logEvent('screen_complete', { p_screen: scr, p_ms: Date.now() - SCREEN_T });
       if (STAGE === coreStage()) {
         var nx = nextVisibleIndex(SI);
         if (nx >= 0) { SI = nx; saveDraft(); return drawScreen(); }
@@ -473,7 +476,6 @@
         .then(function (r) {
           if (!r || r.ok === false) return failed(r);
           DONE_STAGES = r.stages_completed || DONE_STAGES; DONE_SCREENS = r.screens_completed || DONE_SCREENS;
-          logEvent('screen_complete', { p_screen: scr, p_ms: Date.now() - startedAt });
           startedAt = Date.now();
           if (r.reveal && r.reveal.cards && r.reveal.cards.length) return drawReveal(r.reveal, advance);
           advance();
@@ -580,8 +582,9 @@
       if (!shownCards.length) return onDone();
       render(stageBar() + html + '<div class="nav"><button class="btn pri" id="go">Continue</button></div>');
       shownCards.forEach(function (i) { wireCard(rv.cards[i], i); });
-      $('#go').onclick = function () { logEvent('continue_click', { p_screen: rv.screen }); onDone(); };
+      $('#go').onclick = function () { logEvent('continue_click', { p_screen: rv.screen, p_ms: Date.now() - REVEAL_T }); onDone(); };
       logEvent('reveal_view', { p_screen: rv.screen });
+      REVEAL_T = Date.now();
       toTop();
     }
     function wireCard(c, i) {
