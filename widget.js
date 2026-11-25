@@ -567,12 +567,19 @@
 
     function drawReveal(rv, onDone) {
       SPEC = {};
+      rv.cards.forEach(function (c) { SPEC[c.key] = specFor(rv.screen, c.key); });
+      /* A card with no peer data yet, and nothing personal worth showing, is left
+         out rather than shown with a "not enough answers" note. A reveal with no
+         cards left is skipped. Cards appear by themselves once data arrives. */
+      var shownCards = [];
       var html = rv.cards.map(function (c, i) {
-        SPEC[c.key] = specFor(rv.screen, c.key);
-        return '<div data-card="' + i + '">' + cardHTML(c, null) + '</div>';
+        var inner = cardHTML(c, null);
+        if (inner) shownCards.push(i);
+        return inner ? '<div data-card="' + i + '">' + inner + '</div>' : '';
       }).join('');
+      if (!shownCards.length) return onDone();
       render(stageBar() + html + '<div class="nav"><button class="btn pri" id="go">Continue</button></div>');
-      rv.cards.forEach(function (c, i) { wireCard(c, i); });
+      shownCards.forEach(function (i) { wireCard(rv.cards[i], i); });
       $('#go').onclick = function () { logEvent('continue_click', { p_screen: rv.screen }); onDone(); };
       logEvent('reveal_view', { p_screen: rv.screen });
       toTop();
@@ -601,10 +608,6 @@
         return '<button type="button" data-grp="' + x.group + '" aria-pressed="' + (x === g) + '">' + t + '</button>';
       }).join('') + '</div>';
     }
-    function waitHTML(c) {
-      var n = Math.min.apply(null, (c.groups || []).map(function (g) { return g.needed || 99; }));
-      return '<p class="wait">Peer comparisons appear here once enough people have answered' + (n < 99 ? ' (another ' + n + ' or so)' : '') + '. Come back to see them.</p>';
-    }
     function bars(rows, you) {
       return rows.map(function (r) {
         return '<div class="dbar' + (r.is_you ? ' you' : '') + '"><div><div class="lab">' + r.label + (r.is_you ? '<span class="youtag">You</span>' : '') +
@@ -631,7 +634,7 @@
           h = head(c);
           if (!g) {
             var yl = you.value == null ? null : (typeof you.value === 'number' ? you.value + (q && q.key === 'q02_years' ? ' years' : '') : label(q.key, you.value));
-            return '<div class="card">' + h + (yl ? '<p class="narr">Your answer: <b>' + yl + '</b>.</p>' : '') + waitHTML(c) + '</div>';
+            return '';
           }
           var marked = g.rows.some(function (r) { return r.is_you; });
           return '<div class="card">' + h + basisLine(c, g) + segHTML(c, g, av) +
@@ -642,7 +645,7 @@
         }
         case 'guess': {
           h = '<div class="hero"><div class="basis" style="margin:0 0 6px">' + COPY[c.key] + '</div>';
-          if (!g) return h + '<div class="fig">' + you.guess + '%</div><p class="narr">That was your guess. The real figure appears once enough people have answered.</p></div>';
+          if (!g) return '';
           return h + '<div class="fig">' + g.actual + '%</div><p class="narr">Among marketers who\u2019ve taken the survey, <b>' + g.actual +
             '%</b> have AI fully built into their workflows. You guessed <b>' + you.guess + '%</b>.</p></div>' +
             '<div class="card"><h2>Where your team sits</h2>' + basisLine(c, g) + bars(g.rows) + '</div>';
@@ -651,7 +654,7 @@
           var qk = (SPEC[c.key] || {}).question;
           h = head(c);
           var mine = Array.isArray(you.value) ? you.value : (you.value ? [you.value] : []);
-          if (!g) return '<div class="card">' + h + (mine.length ? '<div class="chips">' + mine.map(function (k) { return '<span class="chip">' + label(qk, k) + '</span>'; }).join('') + '</div>' : '') + waitHTML(c) + '</div>';
+          if (!g) return '';
           var rows = g.rows.slice().sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
           return '<div class="card">' + h + basisLine(c, g) + segHTML(c, g, av) + bars(rows) +
             (g.new_options && g.new_options.length ? '<div class="sub"><h4>Options added this year</h4>' + bars(g.new_options) +
@@ -660,7 +663,7 @@
         case 'count_gap': {
           var qk2 = (SPEC[c.key] || {}).question, mine2 = (you.value || []).filter(function (x) { return !(QBY[qk2].options.filter(function (o) { return o.key === x && o.exclusive; })[0]); });
           h = head(c) + '<p class="narr">You use <b>' + words(mine2.length) + '</b> of these methods.</p>';
-          if (!g) return '<div class="card">' + h + waitHTML(c) + '</div>';
+          if (!g) return '';
           return '<div class="card">' + h + basisLine(c, g) + '<p class="narr">Most of your peers use between <b>' + g.p25 + '</b> and <b>' + g.p75 + '</b>, with a typical peer using <b>' + g.median + '</b>.</p>' +
             (g.gaps.length ? '<div class="sub"><h4>Used by your peers, not by you</h4>' + bars(g.gaps) + '</div>' : '<p class="narr">There\u2019s nothing your peers use that you don\u2019t.</p>') + '</div>';
         }
@@ -668,7 +671,7 @@
           var sp = SPEC[c.key] || {}, k3 = sp.keys || {};
           var col = function (t, arr, qk) { return arr && arr.length ? '<div><h4>' + t + '</h4><div class="chips">' + arr.filter(function (x) { return !QBY[qk].options.filter(function (o) { return o.key === x && o.exclusive; })[0]; }).map(function (x) { return '<span class="chip">' + label(qk, x) + '</span>'; }).join('') + '</div></div>' : ''; };
           h = head(c) + '<div class="shift">' + col('Three years ago', you.past, k3.past) + col('Today', you.today, k3.today) + col('In three years', you.future, k3.future) + '</div>';
-          if (!g || !g.peers) return '<div class="card">' + h + waitHTML(c) + '</div>';
+          if (!g || !g.peers) return '<div class="card">' + h + '</div>';
           var pp = g.peers;
           return '<div class="card">' + h + '<div class="sub">' + basisLine(c, g) +
             (pp[k3.today] ? '<h4>Where peers\u2019 attention goes today</h4>' + bars(pp[k3.today].map(mark(you.today))) : '') +
@@ -696,7 +699,7 @@
             (you.fading_strengths.length ? '<div class="sub"><h4>Strengths you expect to matter less</h4><ul class="list">' + you.fading_strengths.map(li).join('') +
               '</ul><p class="foot">Based on your own forecast, not ours.</p></div>' : '') +
             (g && g.attention_future ? '<div class="sub"><h4>Where peers expect their attention to go in three years</h4>' + bars(g.attention_future.map(mark(ANS.q11_work_future))) + '</div>' : '') +
-            (!g ? waitHTML(c) : '') + '</div>';
+            '</div>';
           return h;
         }
         case 'task_reach': {
@@ -705,7 +708,7 @@
           if (c.key === 'ai_reach_you' || !g) {
             h += '<p class="narr">You expect AI to perform <b>' + words(you.ai_count) + '</b> of the <b>' + words(you.done_count) + '</b> pieces of work you do, on its own or subject to your review.</p>' +
               '<ul class="list">' + you.tasks.filter(function (t) { return aiv.indexOf(t.value) >= 0; }).map(function (t) { return '<li><b>' + QBY[t.key].label + '</b><span class="peer">' + label(t.key, t.value) + '</span></li>'; }).join('') + '</ul>';
-            return '<div class="card">' + h + (c.key === 'ai_reach_you' ? '' : waitHTML(c)) + '</div>';
+            return c.key === 'ai_reach_you' ? '<div class="card">' + h + '</div>' : '';
           }
           return '<div class="card">' + h + basisLine(c, g) + '<p class="basis" style="margin-top:-8px">Share of peers who do this work and expect AI to perform it, on its own or subject to review.</p>' +
             bars(g.tasks.filter(function (t) { return t.ai != null; }).sort(function (a, b) { return b.ai - a.ai; }).map(function (t) {
@@ -715,7 +718,7 @@
         case 'roles': {
           var added = you.added || [];
           h = head(c);
-          if (!g) return '<div class="card">' + h + (added.length ? '<p class="narr">Your team has added: <b>' + added.map(function (k) { return QBY[k].label; }).join(', ') + '</b>.</p>' : '') + waitHTML(c) + '</div>';
+          if (!g) return '';
           return '<div class="card">' + h + basisLine(c, g) + '<p class="basis" style="margin-top:-8px">Share of peers\u2019 teams that added each role in the past three years.</p>' +
             bars(g.roles.filter(function (r) { return r.added != null; }).sort(function (a, b) { return b.added - a.added; }).map(function (r) {
               return { label: r.label, share: r.added, is_you: added.indexOf(r.key) >= 0 };
